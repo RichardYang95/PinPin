@@ -8,7 +8,6 @@ import android.location.Geocoder;
 import android.location.Location;
 import android.os.Build;
 import android.os.Handler;
-import android.provider.ContactsContract;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
@@ -16,11 +15,8 @@ import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
-import android.util.Log;
 import android.view.View;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
-import android.widget.ListView;
 import android.widget.Toast;
 import android.content.Context;
 
@@ -28,9 +24,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Timer;
-import java.util.TimerTask;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.location.LocationListener;
@@ -41,12 +34,9 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptor;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -67,12 +57,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     final Context context = this;
 
     // Reads in the coordinates from the database and adds/removes pins from the map
-    // TODO: Implement remove pins (delete from database and see if the marker gets removed)
     final Handler timerHandler = new Handler();
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            System.out.println("IS RUNNING");
+            System.out.println("NEW TIME CYCLE");
 
             FirebaseDatabase database = FirebaseDatabase.getInstance();
             final DatabaseReference myRef = database.getReference("Coordinates/");
@@ -81,13 +70,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 @Override
                 public void onDataChange(DataSnapshot dataSnapshot) {
                     if (dataSnapshot.exists()) {
-                        ArrayList<LatLng> dbCoords = new ArrayList<LatLng>();
+                        // Get list of coordinates from the database
+                        ArrayList<LatLng> dbCoords = new ArrayList<>();
                         collectCoordinates((Map<String,Object>) dataSnapshot.getValue(), dbCoords);
 
                         addMarkers(dbCoords);
                         removeMarkers(dbCoords);
-
-                        dbCoords.clear();
+                    }
+                    else {
+                        for (Marker m : mapMarkers) {
+                            m.remove();
+                        }
                     }
                 }
 
@@ -97,7 +90,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 }
             });
 
-            timerHandler.postDelayed(this, 15000); // update every 30 seconds
+            timerHandler.postDelayed(this, 15000); // Update every 15 seconds
         }
     };
 
@@ -142,7 +135,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private void addMarkers(ArrayList<LatLng> dbCoords) {
         for (LatLng l : dbCoords) {
             Marker marker = mMap.addMarker(new MarkerOptions().position(l));
-            marker.setDraggable(true);
 
             // Add the marker to array of markers on map
             mapMarkers.add(marker);
@@ -215,26 +207,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onMapClick(LatLng pin) {
                 // Add the marker to the map
                 Marker marker = mMap.addMarker(new MarkerOptions().position(pin));
-                marker.setDraggable(true);
                 mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pin, 18));
 
                 // Add the marker to array of markers on map
                 mapMarkers.add(marker);
 
-                // Write lat and long to database
                 DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
 
                 // Make a unique id based on lat and lng
                 String hash = String.valueOf(pin.latitude) + String.valueOf(pin.longitude);
                 String id = String.valueOf(hash.hashCode());
 
+                // Write lat and long to database
                 ref.child(id).child("Lat").setValue(pin.latitude);
                 ref.child(id).child("Lng").setValue(pin.longitude);
             }
         });
 
         // Delete a marker on tap
-        // Might have to also add users unique id to firebase so user cant delete other user's pins
+        // TODO: Might have to also add users unique id to firebase so user cant delete other users pins
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
