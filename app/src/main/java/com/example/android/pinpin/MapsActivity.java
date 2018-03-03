@@ -20,8 +20,19 @@ import android.widget.EditText;
 import android.widget.Toast;
 import android.content.Context;
 
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -62,33 +73,57 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         @Override
         public void run() {
             System.out.println("NEW TIME CYCLE");
+            ArrayList<LatLng> dbCoords = new ArrayList<>();
 
-            FirebaseDatabase database = FirebaseDatabase.getInstance();
-            final DatabaseReference myRef = database.getReference("Coordinates/");
-
-            myRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            // Read and Send new coords in new thread
+            Thread thread = new Thread(new Runnable() {
                 @Override
-                public void onDataChange(DataSnapshot dataSnapshot) {
-                    if (dataSnapshot.exists()) {
-                        // Get list of coordinates from the database
-                        ArrayList<LatLng> dbCoords = new ArrayList<>();
-                        collectCoordinates((Map<String,Object>) dataSnapshot.getValue(), dbCoords);
+                public void run() {
+                    try {
+                        // Read in coordinates from the HTML Server
+                        URLConnection c = new URL("http://129.65.221.101/php/getPinPinGPSdata.php").openConnection();
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                        Map<String, Object> map = new HashMap<String, Object>();
+                        for(String line; (line = reader.readLine()) != null;)
+//                            map.put()
+                            System.out.println(line);
 
-                        addMarkers(dbCoords);
-                        removeMarkers(dbCoords);
+
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
-                    else {
-                        for (Marker m : mapMarkers) {
-                            m.remove();
-                        }
-                    }
-                }
-
-                @Override
-                public void onCancelled(DatabaseError databaseError) {
-
                 }
             });
+
+            thread.start();
+//
+//            FirebaseDatabase database = FirebaseDatabase.getInstance();
+//            final DatabaseReference myRef = database.getReference("Coordinates/");
+//
+//            myRef.addListenerForSingleValueEvent(new ValueEventListener() {
+//                @Override
+//                public void onDataChange(DataSnapshot dataSnapshot) {
+//                    if (dataSnapshot.exists()) {
+//                        // Get list of coordinates from the database
+//                        ArrayList<LatLng> dbCoords = new ArrayList<>();
+//                        collectCoordinates((Map<String,Object>) dataSnapshot.getValue(), dbCoords);
+//
+//                        addMarkers(dbCoords);
+//                        removeMarkers(dbCoords);
+//                    }
+//                    else {
+//                        for (Marker m : mapMarkers) {
+//                            m.remove();
+//                        }
+//                    }
+//                }
+//
+//                @Override
+//                public void onCancelled(DatabaseError databaseError) {
+//
+//                }
+//            });
 
             timerHandler.postDelayed(this, 15000); // Update every 15 seconds
         }
@@ -201,7 +236,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             mMap.setMyLocationEnabled(true);
         }
 
-        // Add a marker on tap
+        // Adds a marker on tap
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
             public void onMapClick(LatLng pin) {
@@ -212,15 +247,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 // Add the marker to array of markers on map
                 mapMarkers.add(marker);
 
-                DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
+                // Add the lat and lng to database
+                final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=lat:" + pin.latitude + " lng:" + pin.longitude;
+                Thread thread = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            URL send = new URL(entry);
+                            URLConnection connection = send.openConnection();
+                            InputStream in = connection.getInputStream();
+                            in.close();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
 
-                // Make a unique id based on lat and lng
-                String hash = String.valueOf(pin.latitude) + String.valueOf(pin.longitude);
-                String id = String.valueOf(hash.hashCode());
+                thread.start();
 
-                // Write lat and long to database
-                ref.child(id).child("Lat").setValue(pin.latitude);
-                ref.child(id).child("Lng").setValue(pin.longitude);
+//                DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
+//
+//                // Make a unique id based on lat and lng
+//                String hash = String.valueOf(pin.latitude) + String.valueOf(pin.longitude);
+//                String id = String.valueOf(hash.hashCode());
+//
+//                // Write lat, long, and current time to database
+//                ref.child(id).child("Lat").setValue(pin.latitude);
+//                ref.child(id).child("Lng").setValue(pin.longitude);
+//                ref.child(id).child("Time").setValue(Calendar.getInstance().getTimeInMillis());
             }
         });
 
