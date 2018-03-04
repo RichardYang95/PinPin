@@ -8,6 +8,7 @@ import android.location.Geocoder;
 import android.location.Location;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
@@ -33,8 +34,10 @@ import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.location.LocationListener;
@@ -63,6 +66,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private GoogleApiClient client;
     public static final int REQUEST_LOCATION_CODE = 99;
     private ArrayList<Marker> mapMarkers = new ArrayList<>();
+    private Set<LatLng> existingDBCoords = new HashSet<>();
+
 
     // For alert dialog
     final Context context = this;
@@ -72,8 +77,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            System.out.println("NEW TIME CYCLE");
-            ArrayList<LatLng> dbCoords = new ArrayList<>();
+            System.out.println("NEW CYCLE");
 
             // Read and Send new coords in new thread
             Thread thread = new Thread(new Runnable() {
@@ -83,13 +87,45 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         // Read in coordinates from the HTML Server
                         URLConnection c = new URL("http://129.65.221.101/php/getPinPinGPSdata.php").openConnection();
                         BufferedReader reader = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                        Map<String, Object> map = new HashMap<String, Object>();
-                        for(String line; (line = reader.readLine()) != null;)
-//                            map.put()
-                            System.out.println(line);
+                        final Set<LatLng> newDBCoords = new HashSet<>();
+                        final Set<LatLng> dbCoords = new HashSet<>();
+
+                        for (String line; (line = reader.readLine()) != null;) {
+                            // Separate the given line by whitespace
+                            String[] coords = line.split("\\s");
+
+                            try {
+
+                                Double lat = Double.parseDouble(coords[0]);
+                                Double lng = Double.parseDouble(coords[1]);
+                                LatLng l = new LatLng(lat, lng);
+
+                                // Add a
+                                if (!existingDBCoords.contains(l)) {
+                                    // TODO: Only add coords within x miles of user
+                                    newDBCoords.add(l);
+                                    existingDBCoords.add(l);
+                                }
+                                dbCoords.add(l);
 
 
 
+                            } catch (NumberFormatException e) {
+                                System.out.println("The coord in the database is not formatted correctly: " + line);
+                            }
+                        }
+
+
+                        // Have to add and remove markers from map on main thread
+                        Handler mainHandler = new Handler(Looper.getMainLooper());
+                        Runnable myRunnable = new Runnable() {
+                            @Override
+                            public void run() {
+                                addMarkers(newDBCoords);
+                                removeMarkers(dbCoords);
+                            }
+                        };
+                        mainHandler.post(myRunnable);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -97,34 +133,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             });
 
             thread.start();
-//
-//            FirebaseDatabase database = FirebaseDatabase.getInstance();
-//            final DatabaseReference myRef = database.getReference("Coordinates/");
-//
-//            myRef.addListenerForSingleValueEvent(new ValueEventListener() {
-//                @Override
-//                public void onDataChange(DataSnapshot dataSnapshot) {
-//                    if (dataSnapshot.exists()) {
-//                        // Get list of coordinates from the database
-//                        ArrayList<LatLng> dbCoords = new ArrayList<>();
-//                        collectCoordinates((Map<String,Object>) dataSnapshot.getValue(), dbCoords);
-//
-//                        addMarkers(dbCoords);
-//                        removeMarkers(dbCoords);
-//                    }
-//                    else {
-//                        for (Marker m : mapMarkers) {
-//                            m.remove();
-//                        }
-//                    }
-//                }
-//
-//                @Override
-//                public void onCancelled(DatabaseError databaseError) {
-//
-//                }
-//            });
-
             timerHandler.postDelayed(this, 15000); // Update every 15 seconds
         }
     };
@@ -147,28 +155,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         timerHandler.postDelayed(timerRunnable, 0);
     }
 
-    // Reads in all the coordinates in the database
-    // TODO: May want to change this for only coords within x miles of user
-    private void collectCoordinates(Map<String, Object> coords, ArrayList<LatLng> dbCoords) {
-        for (Map.Entry<String, Object> entry : coords.entrySet()) {
-            // Get coord map
-            Map singleCoord = (Map) entry.getValue();
-
-            // Get lat and lng and append to list
-            Double lat = ((Double) singleCoord.get("Lat"));
-            Double lng = ((Double) singleCoord.get("Lng"));
-
-            // I dont know why i have to add this check but it works
-            if (lat != null && lng != null) {
-                LatLng l = new LatLng(lat, lng);
-                dbCoords.add(l);
-            }
-        }
-    }
-
     // Adds all the markers from the database onto the map
-    private void addMarkers(ArrayList<LatLng> dbCoords) {
-        for (LatLng l : dbCoords) {
+    private void addMarkers(Set<LatLng> newDBCoords) {
+        for (LatLng l : newDBCoords) {
             Marker marker = mMap.addMarker(new MarkerOptions().position(l));
 
             // Add the marker to array of markers on map
@@ -177,7 +166,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     // Removes all the markers on the map that don't exist on the database anymore
-    private void removeMarkers(ArrayList<LatLng> dbCoords) {
+    private void removeMarkers(Set<LatLng> dbCoords) {
         boolean exists = false;
 
         for (Marker m : mapMarkers) {
@@ -187,8 +176,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     exists = true;
                 }
             }
-            
+
             if (!exists) {
+                existingDBCoords.remove(m.getPosition());
                 m.remove();
             }
 
@@ -245,10 +235,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pin, 18));
 
                 // Add the marker to array of markers on map
+                existingDBCoords.add(pin);
                 mapMarkers.add(marker);
 
                 // Add the lat and lng to database
-                final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=lat:" + pin.latitude + " lng:" + pin.longitude;
+                final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=" + pin.latitude + " " + pin.longitude;
                 Thread thread = new Thread(new Runnable() {
                     @Override
                     public void run() {
@@ -294,16 +285,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         @Override
                         public void onClick(DialogInterface dialog, int i) {
                             // Delete the lat & long entry from database
-                            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
-
-                            // Get the unique id based on lat and lng
-                            double lat = m.getPosition().latitude;
-                            double lng = m.getPosition().longitude;
-                            String hash = String.valueOf(lat) + String.valueOf(lng);
-                            String id = String.valueOf(hash.hashCode());
-
-                            // Remove the entry from the database
-                            ref.child(id).removeValue();
+//                            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
+//
+//                            // Get the unique id based on lat and lng
+//                            double lat = m.getPosition().latitude;
+//                            double lng = m.getPosition().longitude;
+//                            String hash = String.valueOf(lat) + String.valueOf(lng);
+//                            String id = String.valueOf(hash.hashCode());
+//
+//                            // Remove the entry from the database
+//                            ref.child(id).removeValue();
 
                             // Remove marker from map
                             m.remove();
@@ -338,7 +329,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     // When search button is clicked
     public void onClick(View v) {
         if (v.getId() == R.id.B_search) {
-            EditText tf_location = (EditText)findViewById(R.id.TF_location);
+            EditText tf_location = findViewById(R.id.TF_location);
             String location = tf_location.getText().toString();
             List<Address> addressList = null;
             MarkerOptions mo = new MarkerOptions();
