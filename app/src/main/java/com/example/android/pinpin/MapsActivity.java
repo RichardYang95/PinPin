@@ -65,8 +65,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private GoogleMap mMap;
     private GoogleApiClient client;
     public static final int REQUEST_LOCATION_CODE = 99;
-    private ArrayList<Marker> mapMarkers = new ArrayList<>();
-    private Set<LatLng> existingDBCoords = new HashSet<>();
 
 
     // For alert dialog
@@ -87,9 +85,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         // Read in coordinates from the HTML Server
                         URLConnection c = new URL("http://129.65.221.101/php/getPinPinGPSdata.php").openConnection();
                         BufferedReader reader = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                        final Set<LatLng> newDBCoords = new HashSet<>();
                         final Set<LatLng> dbCoords = new HashSet<>();
 
+                        // Read in each coordinate from database
                         for (String line; (line = reader.readLine()) != null;) {
                             // Separate the given line by whitespace
                             String[] coords = line.split("\\s");
@@ -100,15 +98,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 Double lng = Double.parseDouble(coords[1]);
                                 LatLng l = new LatLng(lat, lng);
 
-                                // Add a
-                                if (!existingDBCoords.contains(l)) {
-                                    // TODO: Only add coords within x miles of user
-                                    newDBCoords.add(l);
-                                    existingDBCoords.add(l);
-                                }
-                                dbCoords.add(l);
 
-
+                            // TODO: Only add coords within x miles of user
+                            dbCoords.add(l);
 
                             } catch (NumberFormatException e) {
                                 System.out.println("The coord in the database is not formatted correctly: " + line);
@@ -121,12 +113,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         Runnable myRunnable = new Runnable() {
                             @Override
                             public void run() {
-                                addMarkers(newDBCoords);
-                                removeMarkers(dbCoords);
+                                // Clear all markers on the map first
+                                mMap.clear();
+
+                                addMarkers(dbCoords);
                             }
                         };
                         mainHandler.post(myRunnable);
                     } catch (Exception e) {
+                        System.out.println("THERE WAS AN ERROR");
                         e.printStackTrace();
                     }
                 }
@@ -158,31 +153,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     // Adds all the markers from the database onto the map
     private void addMarkers(Set<LatLng> newDBCoords) {
         for (LatLng l : newDBCoords) {
-            Marker marker = mMap.addMarker(new MarkerOptions().position(l));
-
-            // Add the marker to array of markers on map
-            mapMarkers.add(marker);
-        }
-    }
-
-    // Removes all the markers on the map that don't exist on the database anymore
-    private void removeMarkers(Set<LatLng> dbCoords) {
-        boolean exists = false;
-
-        for (Marker m : mapMarkers) {
-            for (LatLng l : dbCoords) {
-                // Marker exists
-                if (l.latitude == m.getPosition().latitude && l.longitude == m.getPosition().longitude) {
-                    exists = true;
-                }
-            }
-
-            if (!exists) {
-                existingDBCoords.remove(m.getPosition());
-                m.remove();
-            }
-
-            exists = false;
+            mMap.addMarker(new MarkerOptions().position(l));
         }
     }
 
@@ -231,12 +202,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onMapClick(LatLng pin) {
                 // Add the marker to the map
-                Marker marker = mMap.addMarker(new MarkerOptions().position(pin));
+                mMap.addMarker(new MarkerOptions().position(pin));
                 mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pin, 18));
-
-                // Add the marker to array of markers on map
-                existingDBCoords.add(pin);
-                mapMarkers.add(marker);
 
                 // Add the lat and lng to database
                 final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=" + pin.latitude + " " + pin.longitude;
