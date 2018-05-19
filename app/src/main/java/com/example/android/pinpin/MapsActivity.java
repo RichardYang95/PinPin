@@ -1,74 +1,56 @@
 package com.example.android.pinpin;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
-import android.location.Address;
-import android.location.Geocoder;
 import android.location.Location;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
-import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AlertDialog;
-import android.view.View;
-import android.widget.EditText;
 import android.widget.Toast;
-import android.content.Context;
-
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
+import com.google.android.gms.location.places.ui.PlaceSelectionListener;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.HashSet;
+import java.util.Set;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
-        LocationListener {
+        LocationListener{
 
     private GoogleMap mMap;
     private GoogleApiClient client;
-    public static final int REQUEST_LOCATION_CODE = 99;
-
-
-    // For alert dialog
-    final Context context = this;
+    private LatLng currLoc;
+    private static final int REQUEST_LOCATION_CODE = 99;
 
     // Reads in the coordinates from the database and adds/removes pins from the map
     final Handler timerHandler = new Handler();
@@ -85,7 +67,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         // Read in coordinates from the HTML Server
                         URLConnection c = new URL("http://129.65.221.101/php/getPinPinGPSdata.php").openConnection();
                         BufferedReader reader = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                        final Set<LatLng> dbCoords = new HashSet<>();
+
+                        final Set<Pin> dbCoords = new HashSet<>();
 
                         // Read in each coordinate from database
                         for (String line; (line = reader.readLine()) != null;) {
@@ -93,20 +76,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             String[] coords = line.split("\\s");
 
                             try {
-
                                 Double lat = Double.parseDouble(coords[0]);
                                 Double lng = Double.parseDouble(coords[1]);
                                 LatLng l = new LatLng(lat, lng);
 
+                                Pin p = new Pin(l, coords[2]);
 
-                            // TODO: Only add coords within x miles of user
-                            dbCoords.add(l);
-
+                                dbCoords.add(p);
                             } catch (NumberFormatException e) {
                                 System.out.println("The coord in the database is not formatted correctly: " + line);
                             }
                         }
-
 
                         // Have to add and remove markers from map on main thread
                         Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -115,7 +95,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             public void run() {
                                 // Clear all markers on the map first
                                 mMap.clear();
-
                                 addMarkers(dbCoords);
                             }
                         };
@@ -128,7 +107,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             });
 
             thread.start();
-            timerHandler.postDelayed(this, 15000); // Update every 15 seconds
+            timerHandler.postDelayed(this, 5000); // Update every 5 seconds
         }
     };
 
@@ -146,15 +125,73 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
+        // Google Places
+        PlaceAutocompleteFragment autocompleteFragment = (PlaceAutocompleteFragment)
+                getFragmentManager().findFragmentById(R.id.place_autocomplete_fragment);
+
+        autocompleteFragment.setOnPlaceSelectedListener(new PlaceSelectionListener() {
+            @Override
+            public void onPlaceSelected(Place place) {
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(place.getLatLng(), 17));
+            }
+
+            @Override
+            public void onError(Status status) {
+                System.out.println("GOOGLE PLACES ERROR");
+            }
+        });
+
+
         // Read in coordinates from the database
         timerHandler.postDelayed(timerRunnable, 0);
     }
 
     // Adds all the markers from the database onto the map
-    private void addMarkers(Set<LatLng> newDBCoords) {
-        for (LatLng l : newDBCoords) {
-            mMap.addMarker(new MarkerOptions().position(l));
+    private void addMarkers(Set<Pin> newDBCoords) {
+        for (Pin p : newDBCoords) {
+            if (currLoc != null) {
+                if (20 >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude)) {
+                    MarkerOptions mo = new MarkerOptions();
+                    mo.position(p.coords);
+
+                    switch (p.need) {
+                        case "Food":
+                            mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.foodpin));
+                            break;
+                        case "Money":
+                            mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.moneypin));
+                            break;
+                        case "FirstAid":
+                            mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.firstaidpin));
+                            break;
+                        case "Ride":
+                            mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.ridepin));
+                            break;
+                    }
+                    mMap.addMarker(mo);
+                }
+            }
         }
+    }
+
+    private double degreesToRadians(double degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    // Gets distance between 2 coords in km
+    private double getDistance(double lat1, double lon1, double lat2, double lon2) {
+        double earthRadiusKm = 6371;
+
+        double dLat = degreesToRadians(lat2 - lat1);
+        double dLon = degreesToRadians(lon2 - lon1);
+
+        lat1 = degreesToRadians(lat1);
+        lat2 = degreesToRadians(lat2);
+
+        double a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(lat1) * Math.cos(lat2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return earthRadiusKm * c;
     }
 
     // For handling permission request response
@@ -189,8 +226,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
      * installed Google Play services and returned to the app.
      */
     @Override
-    public void onMapReady(GoogleMap googleMap) {
+    public void onMapReady(final GoogleMap googleMap) {
         mMap = googleMap;
+        final String need[] = {"Food"};
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             buildGoogleApiClient();
@@ -200,85 +238,63 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         // Adds a marker on tap
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
-            public void onMapClick(LatLng pin) {
-                // Add the marker to the map
-                mMap.addMarker(new MarkerOptions().position(pin));
-                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pin, 18));
+            public void onMapClick(final LatLng pin) {
+                final MarkerOptions mo = new MarkerOptions();
+                mo.position(pin);
+                String needsArr[] = {"\uD83C\uDF57     Food",
+                        "\uD83D\uDCB5     Money",
+                        "\uD83D\uDE91     First Aid",
+                        "\uD83D\uDE95     Ride"};
 
-                // Add the lat and lng to database
-                final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=" + pin.latitude + " " + pin.longitude;
-                Thread thread = new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            URL send = new URL(entry);
-                            URLConnection connection = send.openConnection();
-                            InputStream in = connection.getInputStream();
-                            in.close();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
+                AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
+                builder.setTitle("Pick a Need");
+                builder.setItems(needsArr, new DialogInterface.OnClickListener() {
+                   public void onClick(DialogInterface dialog,  int which) {
+                       switch(which) {
+                           case 0:
+                               need[0] = "Food";
+                               mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.foodpin));
+                               break;
+                           case 1:
+                               need[0] = "Money";
+                               mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.moneypin));
+                               break;
+                           case 2:
+                               need[0] = "FirstAid";
+                               mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.firstaidpin));
+                               break;
+                           case 3:
+                               need[0] = "Ride";
+                               mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.ridepin));
+                               break;
+                       }
+
+                       mMap.addMarker(mo);
+                       mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(pin, 17));
+
+                       // Add the lat and lng to database
+                       final String entry = "http://129.65.221.101/php/sendPinPinGPSdata.php?gps=" + pin.latitude + " " + pin.longitude + " " + need[0];
+                       Thread thread = new Thread(new Runnable() {
+                           @Override
+                           public void run() {
+                               try {
+                                   URL send = new URL(entry);
+                                   URLConnection connection = send.openConnection();
+                                   InputStream in = connection.getInputStream();
+                                   in.close();
+                               } catch (Exception e) {
+                                   e.printStackTrace();
+                               }
+                           }
+                       });
+
+                       thread.start();
+                   }
                 });
 
-                thread.start();
-
-//                DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
-//
-//                // Make a unique id based on lat and lng
-//                String hash = String.valueOf(pin.latitude) + String.valueOf(pin.longitude);
-//                String id = String.valueOf(hash.hashCode());
-//
-//                // Write lat, long, and current time to database
-//                ref.child(id).child("Lat").setValue(pin.latitude);
-//                ref.child(id).child("Lng").setValue(pin.longitude);
-//                ref.child(id).child("Time").setValue(Calendar.getInstance().getTimeInMillis());
-            }
-        });
-
-        // Delete a marker on tap
-        // TODO: Might have to also add users unique id to firebase so user cant delete other users pins
-        mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
-            @Override
-            public boolean onMarkerClick(Marker marker) {
-                final Marker m = marker;
-
-                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(context);
-                alertDialogBuilder.setTitle("Confirm Delete?");
-                alertDialogBuilder
-                    .setMessage("Delete this Pin?")
-                    .setCancelable(true)
-                    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int i) {
-                            // Delete the lat & long entry from database
-//                            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Coordinates/");
-//
-//                            // Get the unique id based on lat and lng
-//                            double lat = m.getPosition().latitude;
-//                            double lng = m.getPosition().longitude;
-//                            String hash = String.valueOf(lat) + String.valueOf(lng);
-//                            String id = String.valueOf(hash.hashCode());
-//
-//                            // Remove the entry from the database
-//                            ref.child(id).removeValue();
-
-                            // Remove marker from map
-                            m.remove();
-                        }
-                    })
-                    .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int i) {
-                            dialog.cancel();
-                        }
-                    });
-
-                // Show alert dialog
-                AlertDialog alertDialog = alertDialogBuilder.create();
+                AlertDialog alertDialog = builder.create();
                 alertDialog.show();
 
-                return false;
             }
         });
     }
@@ -293,43 +309,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         client.connect();
     }
 
-    // When search button is clicked
-    public void onClick(View v) {
-        if (v.getId() == R.id.B_search) {
-            EditText tf_location = findViewById(R.id.TF_location);
-            String location = tf_location.getText().toString();
-            List<Address> addressList = null;
-            MarkerOptions mo = new MarkerOptions();
-
-            if (! location.equals("")) {
-                Geocoder geo = new Geocoder(this);
-
-                try {
-                    addressList = geo.getFromLocationName(location, 5);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-                //Put marker on addresses
-                for (int i = 0; i < addressList.size(); i++) {
-                    Address myAddress = addressList.get(i);
-                    LatLng latLng = new LatLng(myAddress.getLatitude(), myAddress.getLongitude());
-                    mo.position(latLng);
-                    mo.title("TEST");
-                    mMap.addMarker(mo);
-                }
-            }
-        }
-    }
-
     @Override
     public void onLocationChanged(Location location) {
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        currLoc = new LatLng(location.getLatitude(), location.getLongitude());
 
         // Move map to current location
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 17));
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currLoc, 17));
 
-        // Stop location updates after setting. Prob comment out after
         if (client != null) {
             LocationServices.FusedLocationApi.removeLocationUpdates(client, this);
         }
@@ -348,7 +334,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    public boolean checkLocationPermission() {
+    public void checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // Check if user has given permission previously and denied request
             if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
@@ -358,10 +344,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             else {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_LOCATION_CODE);
             }
-            return false;
-        }
-        else {
-            return true;
         }
     }
 
