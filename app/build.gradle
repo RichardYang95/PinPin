@@ -27,8 +27,8 @@ dependencies {
     implementation 'com.android.support:appcompat-v7:27.1.1'
     implementation 'com.google.android.gms:play-services-maps:15.0.1'
     implementation 'com.google.android.gms:play-services-location:15.0.1'
-    implementation 'com.google.firebase:firebase-core:15.0.2'
-    implementation 'com.google.firebase:firebase-database:15.0.1' // Real-time database
+//    implementation 'com.google.firebase:firebase-core:15.0.2'
+//    implementation 'com.google.firebase:firebase-database:15.0.1' // Real-time database
     implementation 'com.google.android.gms:play-services-places:15.0.1'
 
     testImplementation 'junit:junit:4.12'
