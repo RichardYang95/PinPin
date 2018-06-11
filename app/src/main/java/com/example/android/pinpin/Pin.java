@@ -10,4 +10,24 @@ public class Pin {
         this.coords = coords;
         this.need = need;
     }
+
+    @Override
+    public boolean equals(Object other) {
+        if (!(other instanceof Pin)) {
+            return false;
+        }
+
+        return ((Pin)other).coords.equals(this.coords) && ((Pin)other).need.equals(this.need);
+
+        //return (((Pin)other).coords == this.coords && ((Pin)other).need.equals(this.need));
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + coords.hashCode();
+        result = prime * result + need.hashCode();
+        return result;
+    }
 }

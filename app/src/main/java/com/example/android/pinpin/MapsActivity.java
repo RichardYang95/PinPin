@@ -52,7 +52,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private GoogleApiClient client;
     private LatLng currLoc;
     private static final int REQUEST_LOCATION_CODE = 99;
-    final Set<Pin> dbCoords = new HashSet<>();
+    Set<Pin> dbCoords = new HashSet<>();
 
     // Reads in the coordinates from the database and adds/removes pins from the map
     final Handler timerHandler = new Handler();
@@ -70,8 +70,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         URLConnection c = new URL("http://129.65.221.101/php/getPinPinGPSdata.php").openConnection();
                         BufferedReader reader = new BufferedReader(new InputStreamReader(c.getInputStream()));
 
-//                        final Set<Pin> dbCoords = new HashSet<>();
-
                         // Read in each coordinate from database
                         for (String line; (line = reader.readLine()) != null;) {
                             // Separate the given line by whitespace
@@ -84,7 +82,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                                 Pin p = new Pin(l, coords[2]);
 
-                                dbCoords.add(p);
+                                if (!dbCoords.contains(p)) {
+                                    dbCoords.add(p);
+                                }
                             } catch (NumberFormatException e) {
                                 System.out.println("The coord in the database is not formatted correctly: " + line);
                             }
@@ -109,7 +109,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             });
 
             thread.start();
-            timerHandler.postDelayed(this, 5000); // Update every 5 seconds
+            timerHandler.postDelayed(this, 2000); // Update every 2 seconds
         }
     };
 
@@ -160,19 +160,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     switch (p.need) {
                         case "Food":
                             mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.foodpin));
-                            mo.title("Food");
                             break;
                         case "Money":
                             mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.moneypin));
-                            mo.title("Money");
                             break;
                         case "FirstAid":
                             mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.firstaidpin));
-                            mo.title("FirstAid");
                             break;
                         case "Ride":
                             mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.ridepin));
-                            mo.title("Ride");
                             break;
                     }
                     mMap.addMarker(mo);
@@ -261,22 +257,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                            case 0:
                                need[0] = "Food";
                                mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.foodpin));
-                               mo.title("Food");
                                break;
                            case 1:
                                need[0] = "Money";
                                mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.moneypin));
-                               mo.title("Money");
                                break;
                            case 2:
                                need[0] = "FirstAid";
                                mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.firstaidpin));
-                               mo.title("FirstAid");
                                break;
                            case 3:
                                need[0] = "Ride";
                                mo.icon(BitmapDescriptorFactory.fromResource(R.drawable.ridepin));
-                               mo.title("Ride");
                                break;
                        }
 
@@ -309,10 +301,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
 
+        // Delete a marker on hold.
         mMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
             public void onMapLongClick(final LatLng latLng) {
-                System.out.println("IN LONG CLICK");
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
                 builder.setTitle("Do you want to flag this Pin?");
                 builder.setMessage("Flag this Pin if the person is not at the location anymore.");
@@ -325,24 +317,28 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         for (Pin pin : dbCoords) {
                             double distance = getDistance(pin.coords.latitude, pin.coords.longitude, latLng.latitude, latLng.longitude);
                             if (distance < shortestDist) {
- ;                              shortestDist = distance;
+                                shortestDist = distance;
                                 temp = pin;
                             }
                         }
-                        final Pin p = temp;
 
-                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?Delete=" + p.coords.latitude + " " + p.coords.longitude;
+
+                        // Remove the flagged marker from the map.
+                        mMap.clear();
+                        dbCoords.remove(temp);
+                        addMarkers(dbCoords);
+
+                        // Remove the flagged marker from the database.
+                        final Pin p = temp;
+                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + p.coords.latitude + " " + p.coords.longitude;
                         Thread thread = new Thread(new Runnable() {
                             @Override
                             public void run() {
                                 try {
-                                    System.out.println("IN SEND: " + p.coords.latitude + " " + p.coords.longitude + " " + p.need);
                                     URL send = new URL(delete);
                                     URLConnection connection = send.openConnection();
                                     InputStream in = connection.getInputStream();
                                     in.close();
-                                    System.out.println("IN SEND 22");
-
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 }
