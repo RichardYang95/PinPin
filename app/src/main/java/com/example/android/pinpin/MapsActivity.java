@@ -305,32 +305,38 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
             public void onMapLongClick(final LatLng latLng) {
+
+                // Can't get the marker's exact coords, so have to find the one nearest to the tap.
+                Pin temp = null;
+                double shortestDist = Double.POSITIVE_INFINITY;
+                for (Pin pin : dbCoords) {
+                    double distance = getDistance(pin.coords.latitude, pin.coords.longitude, latLng.latitude, latLng.longitude);
+                    if (distance < shortestDist) {
+                        shortestDist = distance;
+                        temp = pin;
+                    }
+                }
+
+                // If the user long clicked too far away, dont do anything.
+                if (shortestDist > 0.03) {
+                    return;
+                }
+
+                final Pin closest = temp;
+
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
                 builder.setTitle("Do you want to flag this Pin?");
                 builder.setMessage("Flag this Pin if the person is not at the location anymore.");
                 builder.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        // Can't get the marker's exact coords, so have to find the one nearest to the tap.
-                        Pin temp = null;
-                        double shortestDist = Double.POSITIVE_INFINITY;
-                        for (Pin pin : dbCoords) {
-                            double distance = getDistance(pin.coords.latitude, pin.coords.longitude, latLng.latitude, latLng.longitude);
-                            if (distance < shortestDist) {
-                                shortestDist = distance;
-                                temp = pin;
-                            }
-                        }
-
-
                         // Remove the flagged marker from the map.
                         mMap.clear();
-                        dbCoords.remove(temp);
+                        dbCoords.remove(closest);
                         addMarkers(dbCoords);
 
                         // Remove the flagged marker from the database.
-                        final Pin p = temp;
-                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + p.coords.latitude + " " + p.coords.longitude;
+                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + closest.coords.latitude + " " + closest.coords.longitude;
                         Thread thread = new Thread(new Runnable() {
                             @Override
                             public void run() {
