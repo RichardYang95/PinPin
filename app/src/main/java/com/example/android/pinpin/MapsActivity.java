@@ -97,19 +97,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             public void run() {
                                 // Clear all markers on the map first
                                 mMap.clear();
-                                addMarkers(dbCoords);
+                                addMarkers();
                             }
                         };
                         mainHandler.post(myRunnable);
                     } catch (Exception e) {
-                        System.out.println("THERE WAS AN ERROR");
                         e.printStackTrace();
                     }
                 }
             });
 
             thread.start();
-            timerHandler.postDelayed(this, 2000); // Update every 2 seconds
+            timerHandler.postDelayed(this, 60000); // Update every minute
         }
     };
 
@@ -149,10 +148,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     // Adds all the markers from the database onto the map
-    private void addMarkers(Set<Pin> newDBCoords) {
-        for (Pin p : newDBCoords) {
+    private void addMarkers() {
+        for (Pin p : dbCoords) {
             if (currLoc != null) {
-                // Only show Pins within 20 miles of user.
+                // Only show Pins within 20 km of user.
                 if (20 >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude)) {
                     MarkerOptions mo = new MarkerOptions();
                     mo.position(p.coords);
@@ -244,10 +243,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onMapClick(final LatLng pin) {
                 final MarkerOptions mo = new MarkerOptions();
                 mo.position(pin);
-                String needsArr[] = {"\uD83C\uDF57     Food",
-                        "\uD83D\uDCB5     Money",
-                        "\uD83D\uDE91     First Aid",
-                        "\uD83D\uDE95     Ride"};
+                String needsArr[] = {"\uD83C\uDF57     Food", "\uD83D\uDCB5     Money", "\uD83D\uDE91     First Aid", "\uD83D\uDE95     Ride"};
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
                 builder.setTitle("Pick a Need");
@@ -333,10 +329,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         // Remove the flagged marker from the map.
                         mMap.clear();
                         dbCoords.remove(closest);
-                        addMarkers(dbCoords);
+                        addMarkers();
 
                         // Remove the flagged marker from the database.
-                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + closest.coords.latitude + " " + closest.coords.longitude;
+                        final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + closest.coords.latitude +
+                            " " + closest.coords.longitude;
                         Thread thread = new Thread(new Runnable() {
                             @Override
                             public void run() {

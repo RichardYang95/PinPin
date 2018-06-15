@@ -18,8 +18,6 @@ public class Pin {
         }
 
         return ((Pin)other).coords.equals(this.coords) && ((Pin)other).need.equals(this.need);
-
-        //return (((Pin)other).coords == this.coords && ((Pin)other).need.equals(this.need));
     }
 
     @Override
