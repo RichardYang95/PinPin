@@ -133,6 +133,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         autocompleteFragment.setOnPlaceSelectedListener(new PlaceSelectionListener() {
             @Override
             public void onPlaceSelected(Place place) {
+                currLoc = place.getLatLng();
                 mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(place.getLatLng(), 17));
             }
 
